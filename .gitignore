@@ -1,0 +1,42 @@
+# =========================
+# Python (Backend)
+# =========================
+backend/venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Environment variables
+.env
+
+# =========================
+# Node (Frontend React)
+# =========================
+frontend/node_modules/
+node_modules/
+
+# Build folders
+frontend/dist/
+dist/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =========================
+# OS / Misc
+# =========================
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Uploads (optional - if you don’t want to track user files)
+backend/uploads/
