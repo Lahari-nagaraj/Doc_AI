@@ -31,7 +31,7 @@ def upload_file():
 
     return jsonify({
         "message": "File uploaded and processed",
-        "preview": text[:500]  # send first 500 chars
+        "preview": text  # send all extracted text
     })
 
 if __name__ == "__main__":
