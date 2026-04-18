@@ -35,18 +35,25 @@ def extract_text(file_path):
             print("PyMuPDF failed:", e)
 
     # ---------------------------
-    # 🔹 METHOD 3: OCR (LAST RESORT)
+    # 🔹 METHOD 3: OCR (ALTERNATIVE FOR SCANNED PDFs)
     # ---------------------------
     if len(text.strip()) < 500:
         try:
-            print("⚡ Using OCR fallback...")
-            images = convert_from_path(file_path)
+            print("⚡ Detected scanned PDF or text extraction failed. Using OCR...")
+            images = convert_from_path(file_path, dpi=300)
 
-            for img in images:
-                text += pytesseract.image_to_string(img)
+            for page_num, img in enumerate(images, 1):
+                page_text = pytesseract.image_to_string(img)
+                if page_text.strip():
+                    text += page_text + "\n"
+                    print(f"  ✓ Page {page_num} OCR extracted")
+
+            if text.strip():
+                print(f"✅ OCR completed successfully! Total: {len(text)} chars")
 
         except Exception as e:
-            print("OCR failed:", e)
+            print(f"⚠️ OCR failed: {e}")
+            print("  Install Tesseract: https://github.com/UB-Mannheim/tesseract/wiki")
 
     # ---------------------------
     # 🔹 CLEAN TEXT
