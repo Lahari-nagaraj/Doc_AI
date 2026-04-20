@@ -134,9 +134,8 @@ def summarize_document():
 def generate_quiz_api():
     data = request.json or {}
     num_questions = data.get("num_questions", 5)
-    difficulty = data.get("difficulty", "medium")  # "easy" | "medium" | "hard"
+    difficulty = data.get("difficulty", "medium")
 
-    # Validate difficulty
     if difficulty not in ("easy", "medium", "hard"):
         difficulty = "medium"
 
@@ -146,11 +145,15 @@ def generate_quiz_api():
         return jsonify({"error": "No document uploaded yet"}), 400
 
     try:
-        print(f"🧠 Generating {num_questions} {difficulty.upper()} questions...")
+        num_chunks = len(chunks)
+        print(f"🧠 Generating {num_questions} {difficulty.upper()} questions from {num_chunks} chunks...")
+
         quiz = generate_quiz(chunks, num_questions=num_questions, difficulty=difficulty)
 
         if not quiz:
-            return jsonify({"error": "Failed to generate quiz. Try again."}), 500
+            return jsonify({
+                "error": "Failed to generate quiz. The document may be too large — try fewer questions or try again in a moment."
+            }), 500
 
         return jsonify({
             "quiz": quiz,
@@ -159,7 +162,16 @@ def generate_quiz_api():
         })
 
     except Exception as e:
-        print("❌ QUIZ ERROR:", e)
+        err_str = str(e)
+        print("❌ QUIZ ERROR:", err_str)
+
+        # Surface a friendly rate-limit message to the frontend
+        if "429" in err_str or "rate_limit" in err_str.lower():
+            return jsonify({
+                "error": "rate_limited",
+                "message": "Groq API rate limit hit. Please wait about 60 seconds and try again."
+            }), 429
+
         return jsonify({"error": str(e)}), 500
 
 

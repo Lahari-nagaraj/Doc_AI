@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import "./App.css";
 
@@ -54,12 +54,37 @@ function App() {
   // Quiz
   const [quiz, setQuiz] = useState([]);
   const [quizLoading, setQuizLoading] = useState(false);
+  const [quizLoadingMsg, setQuizLoadingMsg] = useState("");
   const [numQuestions, setNumQuestions] = useState(5);
   const [difficulty, setDifficulty] = useState("medium");
   const [userAnswers, setUserAnswers] = useState({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [score, setScore] = useState(null);
-  const [activeDifficulty, setActiveDifficulty] = useState(null); // difficulty used when quiz was generated
+  const [activeDifficulty, setActiveDifficulty] = useState(null);
+
+  // Rate limit state
+  const [rateLimited, setRateLimited] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const countdownRef = useRef(null);
+
+  // Countdown timer for rate limit
+  const startCountdown = (seconds) => {
+    setRateLimited(true);
+    setCountdown(seconds);
+    clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownRef.current);
+          setRateLimited(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => clearInterval(countdownRef.current), []);
 
   const handleUpload = async () => {
     if (!file) {
@@ -79,6 +104,8 @@ function App() {
       setUserAnswers({});
       setQuizSubmitted(false);
       setScore(null);
+      setRateLimited(false);
+      setCountdown(0);
     } catch (err) {
       console.error(err);
       alert("Upload failed");
@@ -132,23 +159,42 @@ function App() {
       alert("Please upload a document first");
       return;
     }
+    if (rateLimited) return;
+
     try {
       setQuizLoading(true);
       setQuiz([]);
       setUserAnswers({});
       setQuizSubmitted(false);
       setScore(null);
+      setQuizLoadingMsg("Analyzing document size...");
+
+      // Small delay so user sees the first message
+      await new Promise((r) => setTimeout(r, 600));
+      setQuizLoadingMsg("Building context from document...");
+
       const res = await axios.post(`${BASE_URL}/quiz`, {
         num_questions: numQuestions,
         difficulty: difficulty,
       });
+
       setQuiz(res.data.quiz);
       setActiveDifficulty(res.data.difficulty);
     } catch (err) {
       console.error(err);
-      alert("Quiz generation failed");
+      const data = err.response?.data;
+
+      if (err.response?.status === 429 || data?.error === "rate_limited") {
+        // Start a 65-second countdown
+        startCountdown(65);
+      } else {
+        alert(
+          data?.message || data?.error || "Quiz generation failed. Try again.",
+        );
+      }
     } finally {
       setQuizLoading(false);
+      setQuizLoadingMsg("");
     }
   };
 
@@ -176,13 +222,11 @@ function App() {
 
   const handleTabSwitch = (tab) => {
     setActiveTab(tab);
-    if (tab === "summary" && !summary && documentUploaded) {
-      handleSummarize();
-    }
+    if (tab === "summary" && !summary && documentUploaded) handleSummarize();
   };
 
-  const renderSummary = (text) => {
-    return text.split("\n").map((line, i) => {
+  const renderSummary = (text) =>
+    text.split("\n").map((line, i) => {
       if (line.startsWith("## "))
         return (
           <h3 key={i} className="summary-heading">
@@ -202,7 +246,6 @@ function App() {
         </p>
       );
     });
-  };
 
   const cfg = activeDifficulty ? DIFFICULTY_CONFIG[activeDifficulty] : null;
   const answeredCount = Object.keys(userAnswers).length;
@@ -236,7 +279,6 @@ function App() {
         <div className="content-box">
           {documentUploaded ? (
             <>
-              {/* TABS */}
               <div className="tabs">
                 <button
                   className={`tab-btn ${activeTab === "ask" ? "active" : ""}`}
@@ -258,7 +300,7 @@ function App() {
                 </button>
               </div>
 
-              {/* ========== ASK TAB ========== */}
+              {/* ASK TAB */}
               {activeTab === "ask" && (
                 <div className="tab-content">
                   <div className="query-section">
@@ -298,8 +340,8 @@ function App() {
                   {showSources && sources.length > 0 && (
                     <div className="sources-section">
                       <h3>Sources</h3>
-                      {sources.map((item, index) => (
-                        <div key={index} className="chunk-box">
+                      {sources.map((item, i) => (
+                        <div key={i} className="chunk-box">
                           {item}
                         </div>
                       ))}
@@ -308,7 +350,7 @@ function App() {
                 </div>
               )}
 
-              {/* ========== SUMMARY TAB ========== */}
+              {/* SUMMARY TAB */}
               {activeTab === "summary" && (
                 <div className="tab-content">
                   {summaryLoading && (
@@ -332,9 +374,36 @@ function App() {
                 </div>
               )}
 
-              {/* ========== QUIZ TAB ========== */}
+              {/* QUIZ TAB */}
               {activeTab === "quiz" && (
                 <div className="tab-content">
+                  {/* RATE LIMIT BANNER */}
+                  {rateLimited && (
+                    <div className="rate-limit-banner">
+                      <div className="rate-limit-icon">⏳</div>
+                      <div className="rate-limit-text">
+                        <strong>API rate limit reached</strong>
+                        <p>
+                          Groq allows ~6,000 tokens/minute on the free tier.
+                          Your document needed compression which used up the
+                          quota.
+                        </p>
+                      </div>
+                      <div className="rate-limit-countdown">
+                        <span className="countdown-number">{countdown}</span>
+                        <span className="countdown-label">seconds</span>
+                      </div>
+                      <button
+                        className="ask-button"
+                        onClick={handleGenerateQuiz}
+                        disabled={countdown > 0}
+                        style={{ marginLeft: "auto" }}
+                      >
+                        {countdown > 0 ? `Wait ${countdown}s` : "Try Now →"}
+                      </button>
+                    </div>
+                  )}
+
                   {/* SETUP SCREEN */}
                   {quiz.length === 0 && !quizLoading && (
                     <div className="quiz-setup">
@@ -342,7 +411,6 @@ function App() {
                         Test your understanding of the document.
                       </p>
 
-                      {/* DIFFICULTY SELECTOR */}
                       <div className="difficulty-section">
                         <p className="difficulty-label">Select Difficulty</p>
                         <div className="difficulty-cards">
@@ -374,9 +442,8 @@ function App() {
                         </div>
                       </div>
 
-                      {/* QUESTION COUNT */}
                       <div className="quiz-controls">
-                        <label>Number of questions:</label>
+                        <label>Questions:</label>
                         <select
                           value={numQuestions}
                           onChange={(e) =>
@@ -392,8 +459,11 @@ function App() {
                         <button
                           onClick={handleGenerateQuiz}
                           className="ask-button generate-btn"
+                          disabled={rateLimited}
                         >
-                          Generate Quiz →
+                          {rateLimited
+                            ? `Wait ${countdown}s...`
+                            : "Generate Quiz →"}
                         </button>
                       </div>
                     </div>
@@ -401,15 +471,22 @@ function App() {
 
                   {/* LOADING */}
                   {quizLoading && (
-                    <div className="loading-indicator">
-                      🧠 Generating {numQuestions} {difficulty} questions...
+                    <div className="quiz-loading-block">
+                      <div className="loading-indicator">
+                        🧠{" "}
+                        {quizLoadingMsg ||
+                          `Generating ${numQuestions} ${difficulty} questions...`}
+                      </div>
+                      <p className="loading-hint">
+                        Large documents are compressed automatically — this may
+                        take a moment.
+                      </p>
                     </div>
                   )}
 
-                  {/* QUIZ */}
+                  {/* ACTIVE QUIZ */}
                   {quiz.length > 0 && !quizLoading && (
                     <>
-                      {/* Difficulty badge */}
                       {cfg && (
                         <div
                           className="quiz-difficulty-badge"
@@ -423,28 +500,22 @@ function App() {
                         </div>
                       )}
 
-                      {/* Score banner */}
                       {quizSubmitted && (
                         <div
-                          className={`score-banner ${score === quiz.length ? "perfect" : score >= quiz.length * 0.6 ? "good" : "retry"}`}
+                          className={`score-banner ${score === quiz.length ? "perfect" : score >= Math.ceil(quiz.length * 0.6) ? "good" : "retry"}`}
                         >
                           {score === quiz.length
                             ? `🎉 Perfect! ${score}/${quiz.length} — You nailed it!`
                             : score >= Math.ceil(quiz.length * 0.6)
-                              ? `✅ Nice work! ${score}/${quiz.length} — Keep it up!`
-                              : `📚 ${score}/${quiz.length} — Review the document and try again!`}
+                              ? `✅ Nice work! ${score}/${quiz.length}`
+                              : `📚 ${score}/${quiz.length} — Review and try again!`}
                         </div>
                       )}
 
-                      {/* Questions */}
                       <div className="quiz-list">
                         {quiz.map((q, qIndex) => {
                           const isCorrect =
                             quizSubmitted && userAnswers[qIndex] === q.answer;
-                          const isWrong =
-                            quizSubmitted &&
-                            userAnswers[qIndex] !== q.answer &&
-                            userAnswers[qIndex] !== undefined;
                           return (
                             <div
                               key={qIndex}
@@ -487,7 +558,6 @@ function App() {
                         })}
                       </div>
 
-                      {/* Submit / Retake */}
                       {!quizSubmitted ? (
                         <div className="submit-row">
                           <span className="answered-count">
