@@ -4,12 +4,14 @@ import "./App.css";
 
 function App() {
   const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState("");
   const [loading, setLoading] = useState(false);
+  const [documentUploaded, setDocumentUploaded] = useState(false);
 
   // 🔥 NEW STATES
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState([]);
+  const [answer, setAnswer] = useState("");
+  const [sources, setSources] = useState([]);
+  const [showSources, setShowSources] = useState(false);
 
   // 📂 Upload PDF
   const handleUpload = async () => {
@@ -26,9 +28,10 @@ function App() {
 
       const res = await axios.post("http://127.0.0.1:5000/upload", formData);
 
-      // ⚠️ Backend now returns full text
-      setPreview(res.data.preview || "");
-      setResponse([]); // reset old results
+      setDocumentUploaded(true);
+      setAnswer(""); // reset
+      setSources([]);
+      setShowSources(false);
     } catch (err) {
       console.error(err);
       alert("Upload failed");
@@ -44,10 +47,17 @@ function App() {
       return;
     }
 
+    if (!documentUploaded) {
+      alert("Please upload a document first");
+      return;
+    }
+
     try {
       const res = await axios.post("http://127.0.0.1:5000/ask", { query });
 
-      setResponse(res.data.retrieved_chunks);
+      setAnswer(res.data.answer);
+      setSources(res.data.sources);
+      setShowSources(false); // hide sources initially
     } catch (err) {
       console.error(err);
       alert("Query failed");
@@ -79,11 +89,8 @@ function App() {
       {/* MAIN */}
       <div className="main-content">
         <div className="content-box">
-          {/* 📄 DOCUMENT VIEW */}
-          {preview ? (
+          {documentUploaded ? (
             <>
-              <div className="preview-text">{preview}</div>
-
               {/* 🔍 QUERY SECTION */}
               <div className="query-section">
                 <input
@@ -99,12 +106,22 @@ function App() {
                 </button>
               </div>
 
-              {/* 📌 RESULTS */}
-              {response.length > 0 && (
-                <div className="results-section">
-                  <h3>Relevant Sections</h3>
+              {/* 📌 ANSWER */}
+              {answer && (
+                <div className="answer-section">
+                  <h3>Answer</h3>
+                  <p>{answer}</p>
+                  <button onClick={() => setShowSources(!showSources)} className="sources-button">
+                    {showSources ? "Hide Sources" : "Show Sources"}
+                  </button>
+                </div>
+              )}
 
-                  {response.map((item, index) => (
+              {/* 📌 SOURCES */}
+              {showSources && sources.length > 0 && (
+                <div className="sources-section">
+                  <h3>Sources</h3>
+                  {sources.map((item, index) => (
                     <div key={index} className="chunk-box">
                       {item}
                     </div>
