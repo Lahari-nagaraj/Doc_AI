@@ -7,7 +7,8 @@ from pdf_utils import extract_text
 from chunking import smart_chunk_text
 from vector_store import create_vector_store, search
 from reranker import rerank
-from llm import generate_answer
+from llm import generate_answer, generate_summary, generate_quiz
+
 app = Flask(__name__)
 CORS(app)
 
@@ -19,6 +20,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def home():
     return jsonify({"message": "Backend running 🚀"})
 
+
 def expand_query(query):
     return f"""
 {query}
@@ -26,6 +28,8 @@ def expand_query(query):
 Similar meanings:
 objective goal purpose aim intent summary overview
 """
+
+
 # ---------------------------
 # 📂 UPLOAD + PROCESS PDF
 # ---------------------------
@@ -43,7 +47,6 @@ def upload_file():
     file.save(filepath)
 
     try:
-        # 🔥 STEP 1: Extract text
         text = extract_text(filepath)
 
         if not text or len(text.strip()) == 0:
@@ -51,15 +54,12 @@ def upload_file():
 
         print("✅ TEXT LENGTH:", len(text))
 
-        # 🔥 STEP 2: Chunk text
         chunks = smart_chunk_text(text, chunk_size=800, overlap=150)
 
         print("✅ CHUNKS:", len(chunks))
 
-        # 🔥 STEP 3: Create embeddings + FAISS index
         index, embeddings = create_vector_store(chunks)
 
-        # 🔥 Store globally (temporary memory)
         app.config["index"] = index
         app.config["chunks"] = chunks
 
@@ -75,7 +75,7 @@ def upload_file():
 
 
 # ---------------------------
-# 🔍 QUERY API (SEARCH)
+# 🔍 QUERY API (Q&A)
 # ---------------------------
 @app.route("/ask", methods=["POST"])
 def ask_question():
@@ -92,16 +92,10 @@ def ask_question():
         return jsonify({"error": "No document uploaded yet"}), 400
 
     try:
-        # 🔥 Retrieve relevant chunks
         expanded_query = expand_query(query)
-
-        results = search(expanded_query, index, chunks, top_k=20)  # 🔥 more recall
-
+        results = search(expanded_query, index, chunks, top_k=20)
         results = rerank(query, results)
-
         answer = generate_answer(query, results)
-
-
 
         return jsonify({
             "query": query,
@@ -111,6 +105,61 @@ def ask_question():
 
     except Exception as e:
         print("❌ SEARCH ERROR:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------
+# 📝 SUMMARIZE API
+# ---------------------------
+@app.route("/summarize", methods=["POST"])
+def summarize_document():
+    chunks = app.config.get("chunks")
+
+    if chunks is None:
+        return jsonify({"error": "No document uploaded yet"}), 400
+
+    try:
+        summary = generate_summary(chunks)
+        return jsonify({"summary": summary})
+
+    except Exception as e:
+        print("❌ SUMMARIZE ERROR:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------
+# 🧠 QUIZ API
+# ---------------------------
+@app.route("/quiz", methods=["POST"])
+def generate_quiz_api():
+    data = request.json or {}
+    num_questions = data.get("num_questions", 5)
+    difficulty = data.get("difficulty", "medium")  # "easy" | "medium" | "hard"
+
+    # Validate difficulty
+    if difficulty not in ("easy", "medium", "hard"):
+        difficulty = "medium"
+
+    chunks = app.config.get("chunks")
+
+    if chunks is None:
+        return jsonify({"error": "No document uploaded yet"}), 400
+
+    try:
+        print(f"🧠 Generating {num_questions} {difficulty.upper()} questions...")
+        quiz = generate_quiz(chunks, num_questions=num_questions, difficulty=difficulty)
+
+        if not quiz:
+            return jsonify({"error": "Failed to generate quiz. Try again."}), 500
+
+        return jsonify({
+            "quiz": quiz,
+            "total": len(quiz),
+            "difficulty": difficulty
+        })
+
+    except Exception as e:
+        print("❌ QUIZ ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
 
