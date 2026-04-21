@@ -270,6 +270,17 @@ function App() {
             >
               {loading ? "Processing..." : "Upload"}
             </button>
+            <button
+              onClick={() =>
+                window.open(
+                  "http://127.0.0.1:5500/AI-Interview-Engine-main/generator-engine/frontend/index.html",
+                  "_blank",
+                )
+              }
+              className="interview-button"
+            >
+              🎤 Interview Engine
+            </button>
           </div>
         </div>
       </div>

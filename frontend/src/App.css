@@ -77,6 +77,19 @@ button {
   opacity: 0.6;
   cursor: not-allowed;
 }
+.interview-button {
+  padding: 10px 20px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.interview-button:hover {
+  background: #059669;
+}
 
 /* MAIN */
 .main-content {
